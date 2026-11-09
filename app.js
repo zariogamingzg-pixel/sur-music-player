@@ -319,10 +319,6 @@ function next(direction = 1, automatic = false) {
     resumePlayback();
     return;
   }
-  if (direction < 0 && audio.currentTime > 3) {
-    audio.currentTime = 0;
-    return;
-  }
   const target = queueIndex < 0
     ? (direction < 0 ? queue.length - 1 : 0)
     : queueIndex + direction;
@@ -469,24 +465,18 @@ $("repeat").onclick = () => {
     "aria-label",
     `Repeat ${["off", "collection", "song"][repeat]}`,
   );
-  $("repeat").textContent = repeat === 2 ? "↻¹" : "↻";
+  $("repeat").dataset.mode = String(repeat);
   status(`Repeat ${["off", "collection", "song"][repeat]}.`);
 };
-function seekBy(amount) {
-  if (Number.isFinite(audio.duration))
-    audio.currentTime = Math.max(
-      0,
-      Math.min(audio.duration, audio.currentTime + amount),
-    );
-}
 if ("mediaSession" in navigator) {
   for (const [action, fn] of Object.entries({
     play: resumePlayback,
     pause: pausePlayback,
     previoustrack: () => next(-1),
     nexttrack: () => next(),
-    seekbackward: (d) => seekBy(-(d.seekOffset || 10)),
-    seekforward: (d) => seekBy(d.seekOffset || 10),
+    // Do not advertise podcast-style interval controls alongside track skips.
+    seekbackward: null,
+    seekforward: null,
     seekto: (d) => {
       if (Number.isFinite(d.seekTime) && Number.isFinite(audio.duration))
         audio.currentTime = Math.max(0, Math.min(d.seekTime, audio.duration));
@@ -696,7 +686,7 @@ async function offline() {
       ),
     ]);
     swRegistration = registration;
-    const cache = await caches.open("sur-shell-v5");
+    const cache = await caches.open("sur-shell-v7");
     const complete = (
       await Promise.all(
         [

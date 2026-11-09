@@ -17,6 +17,11 @@ const context=vm.createContext({console,setTimeout,clearTimeout,Blob,URL,crypto,
 const run=code=>vm.runInContext(code,context);
 vm.runInContext(fs.readFileSync(root+'/app.js','utf8'),context);
 (async()=>{
+  assert.equal(handlers.get('seekbackward'),null);
+  assert.equal(handlers.get('seekforward'),null);
+  assert.equal(typeof handlers.get('nexttrack'),'function');
+  assert.equal(typeof handlers.get('previoustrack'),'function');
+  handlers.get('seekto')({seekTime:-5});assert.equal(get('audio').currentTime,0);
   run(`current='song-one'; audio.src='blob:existing-song'; audio.currentTime=42;`);
   assert.equal(await handlers.get('play')(),true);
   assert.equal(get('audio').paused,false);assert.equal(nav.mediaSession.playbackState,'playing');
@@ -41,6 +46,19 @@ vm.runInContext(fs.readFileSync(root+'/app.js','utf8'),context);
   audio.play=normalPlay;rejectCategory=true;assert.equal(await handlers.get('play')(),true);rejectCategory=false;
   audio.emit('waiting');assert.equal(get('record').classes.get('is-playing'),false);audio.emit('playing');assert.equal(get('record').classes.get('is-playing'),true);
   audio.emit('ended');assert.equal(nav.mediaSession.playbackState,'paused');
+  // System buttons always select tracks, even well into the current song.
+  run(`tracks=[{id:'a'},{id:'b'},{id:'c'}]; current='b';
+    setQueue(['a','b','c'],'b'); audio.currentTime=42;
+    var selectedTracks=[]; var originalPlayTrack=playTrack;
+    playTrack=(id)=>{selectedTracks.push(id);};`);
+  handlers.get('previoustrack')();
+  assert.equal(run('selectedTracks.at(-1)'),'a');
+  assert.equal(get('audio').currentTime,42);
+  handlers.get('nexttrack')();
+  assert.equal(run('selectedTracks.at(-1)'),'b');
+  handlers.get('nexttrack')();
+  assert.equal(run('selectedTracks.at(-1)'),'c');
+  run('playTrack=originalPlayTrack;tracks=[];queue=[];');
   run('current=null; audio.removeAttribute("src");');assert.equal(await handlers.get('play')(),false);assert.equal(nav.mediaSession.playbackState,'none');
   const cacheVersion=fs.readFileSync(root+'/sw.js','utf8').match(/const CACHE = "([^"]+)"/)[1];
   assert(fs.readFileSync(root+'/app.js','utf8').includes(`caches.open("${cacheVersion}")`));

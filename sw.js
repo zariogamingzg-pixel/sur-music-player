@@ -1,4 +1,4 @@
-const CACHE = "sur-shell-v5";
+const CACHE = "sur-shell-v7";
 const SHELL = [
   "./",
   "./index.html",
