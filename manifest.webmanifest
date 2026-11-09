@@ -1,1 +1,1 @@
-{"id":"./","name":"Sur — Pocket Music","short_name":"Sur","start_url":"./","scope":"./","display":"standalone","background_color":"#fafafa","theme_color":"#fafafa","icons":[{"src":"icon.png","sizes":"512x512","type":"image/png","purpose":"any"}]}
+{"id":"./","name":"Sur — Pocket Music","short_name":"Sur","start_url":"./","scope":"./","display":"standalone","background_color":"#fafafa","theme_color":"#fafafa","icons":[{"src":"music-icon.png","sizes":"512x512","type":"image/png","purpose":"any"}]}

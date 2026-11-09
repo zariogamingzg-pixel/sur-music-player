@@ -288,7 +288,7 @@ async function playTrack(id) {
         album: "Sur · Your collection",
         artwork: [
           {
-            src: new URL("icon.png", location.href).href,
+            src: new URL("music-icon.png", location.href).href,
             sizes: "512x512",
             type: "image/png",
           },
@@ -686,7 +686,7 @@ async function offline() {
       ),
     ]);
     swRegistration = registration;
-    const cache = await caches.open("sur-shell-v7");
+    const cache = await caches.open("sur-shell-v8");
     const complete = (
       await Promise.all(
         [
@@ -695,7 +695,8 @@ async function offline() {
           "./style.css",
           "./app.js",
           "./manifest.webmanifest",
-          "./icon.png",
+          "./music-icon.png",
+          "./apple-touch-icon.png",
         ].map((path) => cache.match(new URL(path, location.href).href)),
       )
     ).every(Boolean);

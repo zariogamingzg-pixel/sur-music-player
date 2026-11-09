@@ -1,11 +1,12 @@
-const CACHE = "sur-shell-v7";
+const CACHE = "sur-shell-v8";
 const SHELL = [
   "./",
   "./index.html",
   "./style.css",
   "./app.js",
   "./manifest.webmanifest",
-  "./icon.png",
+  "./music-icon.png",
+  "./apple-touch-icon.png",
 ];
 const shellURLs = new Set(
   SHELL.map((path) => new URL(path, self.registration.scope).href),
