@@ -26,7 +26,7 @@ const context = vm.createContext({
   },
   caches: {
     async open() { return cache; },
-    async keys() { return ['sur-shell-v3', 'sur-shell-v4', 'other-app']; },
+    async keys() { return ['sur-shell-v4', 'sur-shell-v5', 'other-app']; },
     async delete(key) { deleted.push(key); },
   },
   fetch: (...args) => network(...args),
@@ -49,7 +49,7 @@ function request(path, mode = 'cors', method = 'GET') {
   await lifecycle('install');
   assert.equal(saved.size, 6); assert.equal(activated, true);
   await lifecycle('activate');
-  assert.deepEqual(deleted, ['sur-shell-v3']); assert.equal(claimed, true);
+  assert.deepEqual(deleted, ['sur-shell-v4']); assert.equal(claimed, true);
   assert.equal(await (await request('app.js')).text(), 'fresh');
   network = async () => { throw new Error('offline'); };
   assert.equal(await (await request('app.js?version=4')).text(), 'fresh');

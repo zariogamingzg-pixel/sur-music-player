@@ -13,6 +13,7 @@ let db,
   pendingTrack = null,
   shuffled = false,
   repeat = 0,
+  libraryLoaded = false,
   importing = false,
   playRequest = 0;
 const status = (message, error = false) => {
@@ -23,6 +24,14 @@ const time = (value) =>
   Number.isFinite(value)
     ? `${Math.floor(value / 60)}:${String(Math.floor(value % 60)).padStart(2, "0")}`
     : "0:00";
+let idSequence = 0;
+function createID() {
+  if (typeof globalThis.crypto?.randomUUID === "function")
+    return globalThis.crypto.randomUUID();
+  // These are local database keys, not authentication tokens. Older browsers
+  // and HTTP previews do not always expose randomUUID.
+  return `sur-${Date.now().toString(36)}-${++idSequence}-${Math.random().toString(36).slice(2)}`;
+}
 function openDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open("sur-music", 1);
@@ -58,17 +67,27 @@ function all(store) {
 function write(stores, fn) {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(stores, "readwrite");
+    const timeout = setTimeout(() => {
+      const error = new Error("Saving timed out. Download the MP3 to this device, close other Sur tabs, then retry.");
+      reject(error);
+      try { tx.abort(); } catch {}
+    }, 30000);
+    tx.oncomplete = () => {
+      clearTimeout(timeout);
+      resolve();
+    };
+    tx.onerror = tx.onabort = () => {
+      clearTimeout(timeout);
+      reject(tx.error || new Error("Storage operation cancelled"));
+    };
     try {
       fn(tx);
     } catch (e) {
-      tx.abort();
+      clearTimeout(timeout);
       reject(e);
+      try { tx.abort(); } catch {}
       return;
     }
-    tx.oncomplete = resolve;
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () =>
-      reject(tx.error || new Error("Storage operation cancelled"));
   });
 }
 const saveSettings = () =>
@@ -482,7 +501,7 @@ if ("audioSession" in navigator)
     navigator.audioSession.type = "playback";
   } catch {}
 async function importFiles(files) {
-  if (importing || !db) return;
+  if (importing || !files.length) return;
   importing = true;
   $("import").disabled = true;
   $("empty-import").disabled = true;
@@ -490,8 +509,15 @@ async function importFiles(files) {
     duplicates = 0,
     skipped = 0,
     failed = 0;
+  let failureMessage = "";
   const known = new Set(tracks.map((t) => t.fingerprint));
   try {
+    if (!libraryLoaded) await libraryReady;
+    if (!libraryLoaded) {
+      status("Music storage is unavailable. Reload the page and try again.", true);
+      return;
+    }
+    for (const track of tracks) known.add(track.fingerprint);
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (!/\.mp3$/i.test(file.name)) {
@@ -507,7 +533,7 @@ async function importFiles(files) {
       const name = file.name.replace(/\.mp3$/i, "");
       const separator = name.indexOf(" - ");
       const track = {
-        id: crypto.randomUUID(),
+        id: createID(),
         title: separator > 0 ? name.slice(separator + 3) : name,
         artist: separator > 0 ? name.slice(0, separator) : "Your collection",
         size: file.size,
@@ -516,7 +542,8 @@ async function importFiles(files) {
         fingerprint,
       };
       try {
-        const blob = new Blob([await file.arrayBuffer()], {
+        if (!file.size) throw new Error("This file is empty. Download the MP3 to your device first.");
+        const blob = new Blob([file], {
           type: "audio/mpeg",
         });
         await write(["tracks", "audio"], (tx) => {
@@ -528,23 +555,23 @@ async function importFiles(files) {
         added++;
       } catch (e) {
         failed++;
-        status(
-          e.name === "QuotaExceededError"
+        failureMessage = e.name === "QuotaExceededError"
             ? "Storage is full. Free device space before importing more music."
-            : "Could not save this file. Check that it is downloaded in Files.",
-          true,
-        );
+            : `Could not save ${file.name}. ${e.message || "Check that it is downloaded in Files."}`;
         break;
       }
     }
+  } catch (error) {
+    failed++;
+    failureMessage = `Import failed: ${error.message || "Reload and try again."}`;
   } finally {
     importing = false;
-    $("import").disabled = false;
-    $("empty-import").disabled = false;
+    $("import").disabled = !libraryLoaded;
+    $("empty-import").disabled = !libraryLoaded;
     $("files").value = "";
     render();
-    status(
-      `${added} imported${duplicates ? `, ${duplicates} already in your library` : ""}${skipped ? `, ${skipped} non-MP3 files skipped` : ""}.${failed ? " Import stopped: a file could not be saved. Check free space and that your MP3s are downloaded." : ""}`,
+    if (libraryLoaded) status(
+      `${added} imported${duplicates ? `, ${duplicates} already in your library` : ""}${skipped ? `, ${skipped} non-MP3 files skipped` : ""}.${failed ? ` ${failureMessage}` : ""}`,
       !!failed,
     );
   }
@@ -629,7 +656,7 @@ $("playlist-form").onsubmit = async (e) => {
   const name = $("playlist-name").value.trim();
   if (!name) return;
   savingPlaylist = true;
-  const p = { id: crypto.randomUUID(), name, tracks: [] };
+  const p = { id: createID(), name, tracks: [] };
   playlists.push(p);
   try {
     await saveSettings();
@@ -669,7 +696,7 @@ async function offline() {
       ),
     ]);
     swRegistration = registration;
-    const cache = await caches.open("sur-shell-v4");
+    const cache = await caches.open("sur-shell-v5");
     const complete = (
       await Promise.all(
         [
@@ -694,12 +721,13 @@ async function offline() {
   }
 }
 $("keep").onclick = offline;
-(async () => {
+const libraryReady = (async () => {
   try {
     db = await openDB();
     tracks = await all("tracks");
     playlists = (await read("settings", "playlists")) || [];
     render();
+    libraryLoaded = true;
   } catch {
     status(
       "This browser could not open offline storage. Open the site in Safari with normal browsing enabled.",

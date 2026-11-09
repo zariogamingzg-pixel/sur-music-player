@@ -13,7 +13,7 @@ class Element {
 }
 const elements=new Map(),get=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id);};get('sort').value='title';
 const nav={mediaSession:{playbackState:'none',setActionHandler:(name,fn)=>handlers.set(name,fn),setPositionState(state){this.position=state;}},audioSession:{get type(){return categories.at(-1)||'auto';},set type(value){if(rejectCategory)throw Error('unsupported');categories.push(value);}}};
-const context=vm.createContext({console,Blob,URL,crypto,navigator:nav,window:{},location:{href:'https://sur.test/'},document:{getElementById:get,createElement:()=>new Element(),querySelectorAll:()=>[]},Option:class{},indexedDB:{open(){return {};}}});
+const context=vm.createContext({console,setTimeout,clearTimeout,Blob,URL,crypto,navigator:nav,window:{},location:{href:'https://sur.test/'},document:{getElementById:get,createElement:()=>new Element(),querySelectorAll:()=>[]},Option:class{},indexedDB:{open(){return {};}}});
 const run=code=>vm.runInContext(code,context);
 vm.runInContext(fs.readFileSync(root+'/app.js','utf8'),context);
 (async()=>{

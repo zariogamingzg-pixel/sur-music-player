@@ -8,11 +8,25 @@ class Element{
 const elements=new Map(),get=id=>{if(!elements.has(id))elements.set(id,new Element());return elements.get(id);};get('sort').value='title';
 const stores=new Map();const request=result=>{const req={};setTimeout(()=>{req.result=result;req.onsuccess?.();},0);return req;};
 const db={createObjectStore(name){stores.set(name,new Map());},transaction(names){const tx={objectStore(name){return {get:k=>request(stores.get(name).get(k)),getAll:()=>request([...stores.get(name).values()]),put(v,k){stores.get(name).set(k??v.id,structuredClone(v));},delete:k=>stores.get(name).delete(k)};}};setTimeout(()=>tx.oncomplete?.(),0);return tx;}};
-const context=vm.createContext({console,Blob,File,URL,crypto,Option:class extends Element{constructor(text,value){super();this.textContent=text;this.value=value;}},document:{getElementById:get,createElement:()=>new Element(),querySelectorAll:()=>[]},navigator:{},location:{href:'https://sur.test/'},window:{},indexedDB:{open(){const req={};setTimeout(()=>{req.result=db;req.onupgradeneeded();req.onsuccess();},0);return req;}}});
+const context=vm.createContext({console,setTimeout,clearTimeout,Blob,File,URL,crypto:process.env.SUR_NO_UUID ? {} : crypto,Option:class extends Element{constructor(text,value){super();this.textContent=text;this.value=value;}},document:{getElementById:get,createElement:()=>new Element(),querySelectorAll:()=>[]},navigator:{},location:{href:'https://sur.test/'},window:{},indexedDB:{open(){const req={};setTimeout(()=>{req.result=db;req.onupgradeneeded();req.onsuccess();},0);return req;}}});
 const run=code=>vm.runInContext(code,context);const wait=()=>new Promise(r=>setTimeout(r,30));
 (async()=>{
- run(fs.readFileSync('app.js','utf8'));await wait();
+ run(fs.readFileSync('app.js','utf8'));
  assert.equal(run('tracks.length'),0);
+ // Import must wait for startup and must not require a full ArrayBuffer read.
+ // A stalled Files-provider read previously left the UI at "Saving 1 of 1".
+ const phoneFile=new File(['phone audio'],'Phone.mp3',{lastModified:10});
+ phoneFile.arrayBuffer=()=>{throw Error('full-file read unavailable');};
+ context.phoneFile=phoneFile;
+ await run('importFiles([phoneFile])');
+ assert.equal(run('tracks.length'),1);
+ assert.equal(await stores.get('audio').values().next().value.text(),'phone audio');
+ run('removeTrack(tracks[0])');get('delete-dialog').returnValue='remove';get('delete-dialog').emit('close');await wait();
+ assert.equal(run('tracks.length'),0);
+ // Empty provider files fail visibly and leave controls available for retry.
+ await run("importFiles([new File([], 'Empty.mp3')])");
+ assert.equal(run('tracks.length'),0);assert.match(get('status').textContent,/empty/);
+ assert.equal(get('import').disabled,false);
  await run(`importFiles([new File(['sample'],'Artist - Song.mp3',{lastModified:1})])`);assert.equal(run('tracks.length'),1);assert.equal(run('tracks[0].artist'),'Artist');assert.equal(run('tracks[0].title'),'Song');assert.equal(stores.get('audio').size,1);
  await run(`importFiles([new File(['sample'],'Artist - Song.mp3',{lastModified:1}),new File(['x'],'skip.txt')])`);assert.equal(run('tracks.length'),1);assert.match(get('status').textContent,/1 already/);
  await run(`importFiles([new File(['sample2'],'Another - Ballad.mp3',{lastModified:2})])`);assert.equal(run('tracks.length'),2);
@@ -61,6 +75,15 @@ const run=code=>vm.runInContext(code,context);const wait=()=>new Promise(r=>setT
  await Promise.all([get('playlist-form').onsubmit({preventDefault(){}}),get('playlist-form').onsubmit({preventDefault(){}})]);
  assert.equal(run('playlists.length'),before+1);
  run('removeTrack(tracks[1])');get('delete-dialog').returnValue='remove';get('delete-dialog').emit('close');await wait();assert.equal(run('tracks.length'),1);assert.equal(stores.get('audio').size,1);assert.equal(stores.get('settings').get('playlists')[0].tracks.length,0);
+ // A stalled storage transaction must abort and release the import controls.
+ let aborted=false;
+ context.blockedDB={transaction(){return {objectStore(){return {put(){}};},abort(){aborted=true;this.onabort?.();}};}};
+ context.normalDB=run('db');context.setTimeout=fn=>setTimeout(fn,0);
+ run('db=blockedDB');
+ await run("importFiles([new File(['stalled'], 'Stalled.mp3')])");
+ assert.equal(aborted,true);assert.match(get('status').textContent,/timed out/);
+ assert.equal(get('import').disabled,false);assert.equal(run('importing'),false);
+ run('db=normalDB');context.setTimeout=setTimeout;
  const manifest=JSON.parse(fs.readFileSync('manifest.webmanifest','utf8'));for(const icon of manifest.icons)assert(fs.existsSync('./'+icon.src));assert.equal(manifest.display,'standalone');
- console.log('PASS: import, duplicates, filtering, metadata, search, favourites, playlists, playback queue, repeat, deletion, app assets, cancelled/overlapping track loads, shuffle restoration, initial Previous, deleted pending tracks, and duplicate playlist submissions. Browser and iPhone behaviour require device testing.');
+ console.log('PASS: imports during startup, imports without ArrayBuffer reads, empty-file errors, storage timeouts, ID compatibility, duplicates, filtering, metadata, search, favourites, playlists, playback queue, repeat, deletion, app assets, cancelled/overlapping track loads, shuffle restoration, initial Previous, deleted pending tracks, and duplicate playlist submissions. Browser and iPhone behaviour require device testing.');
 })().catch(error=>{console.error(error);process.exitCode=1;});
