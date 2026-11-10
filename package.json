@@ -1,0 +1,9 @@
+{
+  "name": "sur-music-player",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node check.cjs && node check-resume.cjs && node check-offline.cjs && node --test tests/*.test.cjs",
+    "start": "node scripts/serve.cjs"
+  }
+}

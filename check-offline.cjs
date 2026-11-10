@@ -18,6 +18,7 @@ const cache = {
 };
 const context = vm.createContext({
   URL, Request, Response,
+  console,
   self: {
     registration: { scope }, location: { origin: new URL(scope).origin },
     addEventListener: (name, fn) => handlers.set(name, fn),
@@ -26,7 +27,7 @@ const context = vm.createContext({
   },
   caches: {
     async open() { return cache; },
-    async keys() { return ['sur-shell-v7', 'sur-shell-v8', 'other-app']; },
+    async keys() { return ['sur-shell-v10', 'sur-shell-v11', 'other-app']; },
     async delete(key) { deleted.push(key); },
   },
   fetch: (...args) => network(...args),
@@ -47,12 +48,32 @@ function request(path, mode = 'cors', method = 'GET') {
 }
 (async () => {
   await lifecycle('install');
-  assert.equal(saved.size, 7); assert.equal(activated, true);
+  assert.equal(saved.size, 18); assert.equal(activated, true);
+  for (const path of fs.readdirSync('src/services')) {
+    assert(saved.has(new URL(`src/services/${path}`, scope).href));
+  }
   await lifecycle('activate');
-  assert.deepEqual(deleted, ['sur-shell-v7']); assert.equal(claimed, true);
+  assert.deepEqual(deleted, ['sur-shell-v10']); assert.equal(claimed, true);
+  async function verifyShell() {
+    let result, pending;
+    handlers.get('message')({
+      data: {type: 'SUR_VERIFY_OFFLINE'},
+      ports: [{postMessage(value) {result = value;}}],
+      waitUntil(promise) {pending = promise;},
+    });
+    await pending;
+    return result.complete;
+  }
+  assert.equal(await verifyShell(), true);
+  const missingModule = new URL('src/services/audio.js', scope).href;
+  const audioModule = saved.get(missingModule);
+  saved.delete(missingModule);
+  assert.equal(await verifyShell(), false);
+  saved.set(missingModule, audioModule);
   assert.equal(await (await request('app.js')).text(), 'fresh');
   network = async () => { throw new Error('offline'); };
   assert.equal(await (await request('app.js?version=4')).text(), 'fresh');
+  assert.equal(await (await request('src/app.js')).text(), 'saved');
   assert.equal(await (await request('unknown', 'navigate')).text(), 'saved');
   network = async () => new Response('host unavailable', { status: 503 });
   assert.equal(await (await request('app.js')).text(), 'fresh');
